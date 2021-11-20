@@ -1,23 +1,24 @@
 'use strict';
 
-var os = require('os');
-var fs = require('fs');
-var nodeStatic = require('node-static');
-var https = require('https');
-var socketIO = require('socket.io');
+const os = require('os');
+const fs = require('fs');
+const express = require('express');
+const https = require('https');
+const socketIO = require('socket.io');
 const PORT = process.env.PORT || 8080;
 
-var fileServer = new (nodeStatic.Server)();
-var app = https.createServer({
+const app = express();
+
+app.use(express.static('public'));
+
+var httpsServer = https.createServer({
     key: fs.readFileSync('config/privatekey.key'),
     cert: fs.readFileSync('config/certificate.crt')
-}, function (req, res) {
-    fileServer.serve(req, res);
-}).listen(PORT, '0.0.0.0', () => {
+}, app).listen(PORT, '0.0.0.0', () => {
     console.log("Server running at https://localhost:" + PORT);
 });
 
-var io = socketIO.listen(app);
+var io = socketIO.listen(httpsServer);
 io.sockets.on('connection', function (socket) {
 
     // convenience function to log server messages on the client
