@@ -3,7 +3,8 @@
 const os = require('os');
 const fs = require('fs');
 const express = require('express');
-const https = require('https');
+const http = require('http');
+// const https = require('https');
 const socketIO = require('socket.io');
 const PORT = process.env.PORT || 8080;
 
@@ -11,14 +12,11 @@ const app = express();
 
 app.use(express.static('public'));
 
-var httpsServer = https.createServer({
-    key: fs.readFileSync('config/privatekey.key'),
-    cert: fs.readFileSync('config/certificate.crt')
-}, app).listen(PORT, '0.0.0.0', () => {
-    console.log("Server running at https://localhost:" + PORT);
+var httpServer = http.createServer(app).listen(PORT, '0.0.0.0', () => {
+    console.log("Server running at PORT:" + PORT);
 });
 
-var io = socketIO.listen(httpsServer);
+var io = socketIO.listen(httpServer);
 io.sockets.on('connection', function (socket) {
 
     // convenience function to log server messages on the client
