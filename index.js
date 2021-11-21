@@ -3,16 +3,19 @@
 const os = require('os');
 const fs = require('fs');
 const express = require('express');
-const http = require('http');
-// const https = require('https');
+const https = require('https');
 const socketIO = require('socket.io');
-const PORT = process.env.PORT || 8080;
 
+
+const PORT = process.env.PORT || 8080;
 const app = express();
 
 app.use(express.static('public'));
 
-var httpServer = http.createServer(app).listen(PORT, '0.0.0.0', () => {
+var httpServer = https.createServer({
+    key: fs.readFileSync('config/privatekey.key'),
+    cert: fs.readFileSync('config/certificate.crt')
+}, app).listen(PORT, '0.0.0.0', () => {
     console.log("Server running at PORT:" + PORT);
 });
 

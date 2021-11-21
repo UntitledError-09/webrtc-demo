@@ -93,14 +93,14 @@ socket.on('message', function (message) {
 var localVideo = document.querySelector('#localVideo');
 var remoteVideo = document.querySelector('#remoteVideo');
 
-navigator.mediaDevices.getUserMedia({
-  audio: false,
-  video: true
-})
-  .then(gotStream)
-  .catch(function (e) {
-    alert('getUserMedia() error: ' + e.name);
-  });
+// navigator.mediaDevices.getUserMedia({
+//   audio: false,
+//   video: false
+// })
+//   .then(gotStream)
+//   .catch(function (e) {
+//     alert('getUserMedia() error: ' + e.name);
+//   });
 
 function gotStream(stream) {
   console.log('Adding local stream.');
@@ -113,7 +113,7 @@ function gotStream(stream) {
 }
 
 var constraints = {
-  video: true
+  video: false
 };
 
 console.log('Getting user media with constraints', constraints);
