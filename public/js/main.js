@@ -3,10 +3,12 @@
 var isChannelReady = false;
 var isInitiator = false;
 var isStarted = false;
-var localStream;
+// var localStream;
 var pc;
 var remoteStream;
 var turnReady;
+var stream_channel;
+var last_frame;
 
 var pcConfig = {
   'iceServers': [{
@@ -20,6 +22,61 @@ var sdpConstraints = {
   offerToReceiveVideo: true
 };
 
+///////////////////////////////////////////// 
+// START ROS Code
+// Connecting to ROS
+// -----------------
+
+var ros = new ROSLIB.Ros();
+
+// Create a connection to the rosbridge WebSocket server.
+ros.connect('ws://localhost:9090');
+
+ros.on('connection', function () {
+  console.log('Connected to websocket server.');
+});
+
+ros.on('error', function (error) {
+  console.log('Error connecting to websocket server: ', error);
+});
+
+ros.on('close', function () {
+  console.log('Connection to websocket server closed.');
+});
+
+// Publishing a Topic
+// ------------------
+
+var publisher = new ROSLIB.Topic({
+  ros: ros,
+  name: '/live_data',
+  messageType: 'sensor_msgs/PointCloud2'
+});
+
+// publisher.publish(data);
+
+//Subscribing to a Topic
+//----------------------
+
+// Like when publishing a topic, we first create a Topic object with details of the topic's name
+// and message type. Note that we can call publish or subscribe on the same topic object.
+var listener = new ROSLIB.Topic({
+  ros: ros,
+  name: '/velodyne_points',
+  messageType: 'sensor_msgs/PointCloud2'
+});
+
+// Then we add a callback to be called every time a message is published on this topic.
+listener.subscribe(function (message) {
+  // console.log('Received message on ' + listener.name + ': ' + message.data);
+
+  stream_channel.send(JSON.stringify({ data: message.data, type: 'pc_stream' }));
+
+  // If desired, we can unsubscribe from the topic as well.
+  // listener.unsubscribe();
+});
+
+// END ROS Code
 /////////////////////////////////////////////
 
 var room = 'foo';
@@ -46,6 +103,7 @@ socket.on('join', function (room) {
   console.log('Another peer made a request to join room ' + room);
   console.log('This peer is the initiator of room ' + room + '!');
   isChannelReady = true;
+  gotStream()
 });
 
 socket.on('joined', function (room) {
@@ -58,17 +116,32 @@ socket.on('log', function (array) {
 });
 
 ////////////////////////////////////////////////
+function createRTCDataChannel() {
+  stream_channel = pc.createDataChannel("pc_stream", { negotiated: true, id: 0 });
+  stream_channel.onopen = function (event) {
+    stream_channel.send('Hi!');
+  }
+  stream_channel.onmessage = function (event) {
+    last_frame = event.data;
+    console.log(event.data);
+  }
+}
 
 function sendMessage(message) {
   console.log('Client sending message: ', message);
   socket.emit('message', message);
 }
 
+////////////////////////////////////////////////
+
 // This client receives a message
 socket.on('message', function (message) {
-  console.log('Client received message:', message);
+  // console.log('Client received message:', message);
   if (message === 'got user media') {
     maybeStart();
+  } else if (message.type === 'pc_stream') {
+    // Publish to /live_data rostopic
+    publisher.publish(message.data);
   } else if (message.type === 'offer') {
     if (!isInitiator && !isStarted) {
       maybeStart();
@@ -102,10 +175,8 @@ var remoteVideo = document.querySelector('#remoteVideo');
 //     alert('getUserMedia() error: ' + e.name);
 //   });
 
-function gotStream(stream) {
-  console.log('Adding local stream.');
-  localStream = stream;
-  localVideo.srcObject = stream;
+function gotStream() {
+  // console.log('Adding local stream.');
   sendMessage('got user media');
   if (isInitiator) {
     maybeStart();
@@ -125,11 +196,12 @@ if (location.hostname !== 'localhost') {
 }
 
 function maybeStart() {
-  console.log('>>>>>>> maybeStart() ', isStarted, localStream, isChannelReady);
-  if (!isStarted && typeof localStream !== 'undefined' && isChannelReady) {
+  console.log('>>>>>>> maybeStart() ', isStarted, isChannelReady);
+  if (!isStarted && isChannelReady) {
     console.log('>>>>>> creating peer connection');
     createPeerConnection();
-    pc.addStream(localStream);
+    createRTCDataChannel();
+    // pc.addStream(localStream);
     isStarted = true;
     console.log('isInitiator', isInitiator);
     if (isInitiator) {
