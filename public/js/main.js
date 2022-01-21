@@ -3,12 +3,32 @@
 var isChannelReady = false;
 var isInitiator = false;
 var isStarted = false;
+var MAX_RDC_LENGTH = 262144; // MTU in WebRTC Data Channel
+var MAX_SEGMENT_LENGTH = 262000;
 // var localStream;
 var pc;
 var remoteStream;
 var turnReady;
-var stream_channel;
+var pc_stream_channel;
 var last_frame;
+var last_frame_no;
+
+class payloadStruct {
+  payloadStruct(data, type, msg_segment, total_segments) {
+    this.data = data;
+    this.type = type;
+    this.msg_segment = msg_segment;
+    this.total_segments = total_segments;
+  }
+
+  setData(data) {
+    this.data = data;
+  }
+
+  stringify() {
+    return JSON.stringify({ data: this.data, type: this.type, msg_segment: this.msg_segment, total_segments: this.total_segments })
+  }
+}
 
 var pcConfig = {
   'iceServers': [{
@@ -49,8 +69,8 @@ ros.on('close', function () {
 
 var publisher = new ROSLIB.Topic({
   ros: ros,
-  name: '/live_data',
-  messageType: 'sensor_msgs/PointCloud2'
+  name: '/b2n_data',
+  messageType: 'std_msgs/String'
 });
 
 // publisher.publish(data);
@@ -62,15 +82,22 @@ var publisher = new ROSLIB.Topic({
 // and message type. Note that we can call publish or subscribe on the same topic object.
 var listener = new ROSLIB.Topic({
   ros: ros,
-  name: '/velodyne_points',
-  messageType: 'sensor_msgs/PointCloud2'
+  name: '/n2b_data',
+  serviceType: 'std_msgs/String'
 });
 
 // Then we add a callback to be called every time a message is published on this topic.
 listener.subscribe(function (message) {
   // console.log('Received message on ' + listener.name + ': ' + message.data);
 
-  stream_channel.send(JSON.stringify({ data: message.data, type: 'pc_stream' }));
+  if (pc_stream_channel && message.data.length > MAX_RDC_LENGTH) {
+    for (let curr_pos = 0; curr_pos <= message.data.length; curr_pos += MAX_SEGMENT_LENGTH) {
+      // payload contains {data, type, msg_segment, total_segments}
+      var payload = { data: message.data.substring(curr_pos, curr_pos + MAX_SEGMENT_LENGTH), type: 'b64/octree', msg_segment: curr_pos / MAX_SEGMENT_LENGTH, total_segments: Math.ceil(message.data.length / MAX_SEGMENT_LENGTH) };
+      console.log(JSON.stringify(payload).length)
+      pc_stream_channel.send(JSON.stringify(payload));
+    }
+  }
 
   // If desired, we can unsubscribe from the topic as well.
   // listener.unsubscribe();
@@ -116,14 +143,34 @@ socket.on('log', function (array) {
 });
 
 ////////////////////////////////////////////////
+// Data Channel Initialization and EventListener Initialization
 function createRTCDataChannel() {
-  stream_channel = pc.createDataChannel("pc_stream", { negotiated: true, id: 0 });
-  stream_channel.onopen = function (event) {
-    stream_channel.send('Hi!');
+  pc_stream_channel = pc.createDataChannel("pc_stream", { negotiated: true, id: 0 });
+
+  pc_stream_channel.onopen = function (event) {
+    console.log('RTC Data Channel opened');
   }
-  stream_channel.onmessage = function (event) {
-    last_frame = event.data;
-    console.log(event.data);
+
+  pc_stream_channel.onmessage = function (event) {
+    var msg;
+    try {
+      msg = JSON.parse(event.data);
+      if (msg.type === 'b64/octree') {
+        last_frame += msg.data;
+        last_frame_no = msg.msg_segment;
+        if (last_frame_no === msg.total_segments - 1) {
+          console.log(last_frame.length)
+          // Publishing to /live_data rostopic
+          var pub_msg = new ROSLIB.Message({ data: last_frame })
+          publisher.publish(pub_msg);
+          last_frame = "";
+        }
+      } else {
+        console.log(event.data)
+      }
+    } catch (e) {
+      console.info(event.data);
+    }
   }
 }
 
@@ -134,6 +181,15 @@ function sendMessage(message) {
 
 ////////////////////////////////////////////////
 
+socket.on('data_stream', function (message) {
+  console.log(message.length);
+  message = JSON.parse(message);
+
+  if (message.type == 'pc_stream') {
+    console.log(message.data);
+  }
+})
+
 // This client receives a message
 socket.on('message', function (message) {
   // console.log('Client received message:', message);
@@ -141,6 +197,7 @@ socket.on('message', function (message) {
     maybeStart();
   } else if (message.type === 'pc_stream') {
     // Publish to /live_data rostopic
+    console.log(message.data);
     publisher.publish(message.data);
   } else if (message.type === 'offer') {
     if (!isInitiator && !isStarted) {
@@ -220,7 +277,7 @@ function createPeerConnection() {
   try {
     pc = new RTCPeerConnection(null);
     pc.onicecandidate = handleIceCandidate;
-    pc.onaddstream = handleRemoteStreamAdded;
+    pc.ontrack = handleRemoteStreamAdded;
     pc.onremovestream = handleRemoteStreamRemoved;
     console.log('Created RTCPeerConnnection');
   } catch (e) {
