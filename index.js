@@ -3,7 +3,7 @@
 const os = require('os');
 const fs = require('fs');
 const express = require('express');
-const https = require('https');
+const https = require('http');
 const socketIO = require('socket.io');
 
 
@@ -12,10 +12,7 @@ const app = express();
 
 app.use(express.static('public'));
 
-var httpServer = https.createServer({
-    key: fs.readFileSync('config/privatekey.key'),
-    cert: fs.readFileSync('config/certificate.crt')
-}, app).listen(PORT, '0.0.0.0', () => {
+var httpServer = https.createServer(app).listen(PORT, '0.0.0.0', () => {
     console.log("Server running at PORT:" + PORT);
 });
 
