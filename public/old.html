@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Realtime communication with WebRTC</title>
+
+    <link rel="stylesheet" href="/css/main.css" />
+    <meta charset="utf-8" />
+    
+    <script type="text/javascript" src="https://static.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
+    <script type="text/javascript" src="https://static.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/wasm-flate@0.1.11-alpha/dist/bootstrap.js"></script>
+  </head>
+
+  <body>
+
+    <h1>Realtime communication with WebRTC</h1>
+
+    <div id="videos">
+      <video id="localVideo" autoplay muted></video>
+      <video id="remoteVideo" autoplay></video>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="js/old.js"></script>
+
+  </body>
+
+</html>
