@@ -165,7 +165,7 @@ socket.on('log', function (array) {
 ////////////////////////////////////////////////
 // Data Channel Initialization and EventListener Initialization
 function createRTCDataChannel() {
-  const channel = pc.createDataChannel("pc_stream", { negotiated: true, id: (active_DC++)%MAX_RDC_ID, ordered: true, maxRetransmits: 0, maxPacketLifetime: 66 });
+  const channel = pc.createDataChannel("pc_stream", { negotiated: true, id: (active_DC++)%MAX_RDC_ID, ordered: true, maxRetransmits: 0 });
 
   // onopen event
   channel.onopen = function (event) {
