@@ -6,7 +6,7 @@ var isStarted = false;
 const MAX_RDC_LENGTH = 262144; // MTU in WebRTC Data Channel
 const MAX_SEGMENT_LENGTH = 262000;
 const MAX_RTCDC_BUF_AMT = 16000000;
-const MAX_RTC_DC = 64;
+const MAX_RTC_DC = 16;
 // var localStream;
 var pc;
 var remoteStream;
