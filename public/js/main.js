@@ -6,13 +6,15 @@ var isStarted = false;
 const MAX_RDC_LENGTH = 262144; // MTU in WebRTC Data Channel
 const MAX_SEGMENT_LENGTH = 262000;
 const MAX_RTCDC_BUF_AMT = 16000000;
+const MAX_RTC_DC = 8;
 // var localStream;
 var pc;
 var remoteStream;
 var turnReady;
-var pc_stream_channel;
+var pc_stream_channel = [];
 var last_frame;
 var last_frame_no;
+var active_DC;
 
 class payloadStruct {
   payloadStruct(data, type, msg_segment, total_segments) {
@@ -91,14 +93,27 @@ var listener = new ROSLIB.Topic({
 listener.subscribe(function (message) {
   // console.log('Received message on ' + listener.name + ': ' + message.data);
 
-  if (pc_stream_channel) {
+  // finding RTC DC with minimum bufferedAmount
+  if (pc_stream_channel[active_DC].bufferedAmount > MAX_RTCDC_BUF_AMT) {
+    active_DC = pc_stream_channel.reduce((prev, next) => {
+      return ((prev.bufferedAmount < next.bufferedAmount) ? prev : next)
+    }).id;
+    console.log(`switched to DC [${active_DC}]`);
+  }
+
+  if (pc_stream_channel[active_DC].readyState === 'open') {
     var no_of_chunks = Math.ceil(message.data.length / MAX_SEGMENT_LENGTH);
     for (let curr_pos = 0; curr_pos <= message.data.length; curr_pos += MAX_SEGMENT_LENGTH) {
       // payload contains {data, type, msg_segment, total_segments}
-      var payload = { data: message.data.substring(curr_pos, curr_pos + MAX_SEGMENT_LENGTH), type: 'b64/octree', msg_segment: Math.ceil(curr_pos / MAX_SEGMENT_LENGTH), total_segments: no_of_chunks };
+      var payload = {
+        data: message.data.substring(curr_pos, curr_pos + MAX_SEGMENT_LENGTH),
+        type: 'b64/octree',
+        msg_segment: Math.ceil(curr_pos / MAX_SEGMENT_LENGTH),
+        total_segments: no_of_chunks
+      };
       console.log(JSON.stringify(payload).length)
       try {
-        pc_stream_channel.send(JSON.stringify(payload));
+        pc_stream_channel[active_DC].send(JSON.stringify(payload));
       } catch (e) {
         console.log(e)
       }
@@ -151,33 +166,45 @@ socket.on('log', function (array) {
 ////////////////////////////////////////////////
 // Data Channel Initialization and EventListener Initialization
 function createRTCDataChannel() {
-  pc_stream_channel = pc.createDataChannel("pc_stream", { negotiated: true, id: 0, ordered: true, maxRetransmits: 0, maxPacketLifetime: 66 });
-
-  pc_stream_channel.onopen = function (event) {
-    console.log('RTC Data Channel opened');
+  for (let i = 0; i < MAX_RTC_DC; i++) {
+    pc_stream_channel[i] = pc.createDataChannel("pc_stream", { negotiated: true, id: i, ordered: true, maxRetransmits: 0, maxPacketLifetime: 66 });
   }
 
-  pc_stream_channel.onmessage = function (event) {
-    var msg;
-    try {
-      msg = JSON.parse(event.data);
-      if (msg.type === 'b64/octree') {
-        last_frame += msg.data;
-        last_frame_no = msg.msg_segment;
-        if (last_frame_no === msg.total_segments - 1) {
-          console.log(last_frame.length)
-          // Publishing to /live_data rostopic
-          var pub_msg = new ROSLIB.Message({ data: last_frame })
-          publisher.publish(pub_msg);
-          last_frame = "";
-        }
-      } else {
-        console.log(event.data)
+  pc_stream_channel.map(channel => {
+    channel.onopen = function (event) {
+      console.log(`RTC Data Channel [${event.currentTarget.id}] opened`);
+      if (!active_DC) {
+        active_DC = event.currentTarget.id;
+        console.log(`starting in DC [${active_DC}]`);
       }
-    } catch (e) {
-      console.info(event.data);
+      // console.log(event);
     }
-  }
+  });
+
+  pc_stream_channel.map(channel => {
+    channel.onmessage = function (event) {
+      var msg;
+      try {
+        msg = JSON.parse(event.data);
+        if (msg.type === 'b64/octree') {
+          last_frame += msg.data;
+          last_frame_no = msg.msg_segment;
+          if (last_frame_no === msg.total_segments - 1) {
+            console.log(last_frame.length)
+            // Publishing to /live_data rostopic
+            var pub_msg = new ROSLIB.Message({ data: last_frame })
+            publisher.publish(pub_msg);
+            last_frame = "";
+          }
+        } else {
+          console.log(event.data)
+        }
+      } catch (e) {
+        console.info(event.data);
+      }
+    }
+  });
+
 }
 
 function sendMessage(message) {
